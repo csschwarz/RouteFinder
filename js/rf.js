@@ -1,39 +1,59 @@
 /**
  * Route Finder module
- * params (as dict): mapId, origId, destId, alertBoxId
  */
 var routeFinder = function() {
   
   var self = {};
 
   // Build module core
+  // params (as dict): mapId, origId, destId, alertBoxId
   var init = function(options) {
     var mapOptions = {
       center : new google.maps.LatLng(41.937871, -87.653911),
       zoom : 15,
       mapTypeId : google.maps.MapTypeId.HYBRID
     };
-    self = {
-      btnMappings : {
-        transitBtn : google.maps.TravelMode.TRANSIT,
-        walkBtn : google.maps.TravelMode.WALKING,
-        bikeBtn : google.maps.TravelMode.BICYCLING,
-        driveBtn : google.maps.TravelMode.DRIVING
-      },
-      orig : $('#'+options['origId']),
-      dest : $('#'+options['destId']),
-      alertBox : $('#'+options['alertBoxId']),
-      map : new google.maps.Map($('#'+options['mapId'])[0], mapOptions),
-      directionsService : new google.maps.DirectionsService(),
-      transitLayer : new google.maps.TransitLayer(),
-      directionsDisplay : new google.maps.DirectionsRenderer(),
-      searchRadius : 500,
-      numSearches : 15,
-      transitMode : google.maps.TravelMode.WALKING
+    self.btnMappings = {
+      transitBtn : google.maps.TravelMode.TRANSIT,
+      walkBtn : google.maps.TravelMode.WALKING,
+      bikeBtn : google.maps.TravelMode.BICYCLING,
+      driveBtn : google.maps.TravelMode.DRIVING
     };
+    self.orig = $('#'+options['origId']),
+    self.dest = $('#'+options['destId']),
+    self.alertBox = $('#'+options['alertBoxId']),
+    self.map = new google.maps.Map($('#'+options['mapId'])[0], mapOptions),
+    self.directionsService = new google.maps.DirectionsService(),
+    self.transitLayer = new google.maps.TransitLayer(),
+    self.directionsDisplay = new google.maps.DirectionsRenderer(),
+    self.directions = [];
+    self.searchRadius = 500,
+    self.numSearches = 15,
+    self.transitMode = google.maps.TravelMode.WALKING
     self.directionsDisplay.setMap(self.map);
     self.transitLayer.setMap(self.map);
     return self;
+  }
+
+  self.calcRoute = function() {
+    self.getDirections(self.orig.val(), self.dest.val());
+  }
+
+  self.getDirections = function(start, stop) {
+    if(start && stop) {
+      self.directionsService.route({
+        origin : start,
+        destination : stop,
+        travelMode : self.transitMode
+      }, function(result, status) {
+        if(status == google.maps.DirectionsStatus.OK) {
+          self.directionsDisplay.setDirections(result);
+          self.directions = result['routes'][0]['overview_path'];
+        } else {
+          showAlert(self.alertBox, "<strong>Sorry!</strong> I can't find a route.", "alert-error");
+        }
+      });
+    }
   }
 
   // Transit option button handler
@@ -45,10 +65,21 @@ var routeFinder = function() {
     self.calcRoute();
   }
 
+  // Helper function to show alerts briefly
+  var pendingTimeouts = [];
+  function showAlert(element, message, typeClass) { // alert-success, -failure, -info
+    for(var i=0; i<pendingTimeouts.length; i++) {
+      clearTimeout(pendingTimeouts[i]);
+    }
+    element.css('display', 'none');
+    element.addClass(typeClass);
+    element.html(message);
+    element.fadeIn(100);
+    pendingTimeouts.push(setTimeout(function() { element.fadeOut(100); }, 2000));
+  }
+
   return {init: init};
 };
-
-
 
 
 /*
@@ -117,19 +148,6 @@ var routeFinder = function() {
       }
     }
 
-    // Helper function to show alerts briefly
-    var pendingTimeouts = [];
-    function showAlert(element, message, typeClass) { // alert-success, -failure, -info
-      for(var i=0; i<pendingTimeouts.length; i++) {
-        clearTimeout(pendingTimeouts[i]);
-      }
-      element.css('display', 'none');
-      element.addClass(typeClass);
-      element.html(message);
-      element.fadeIn(100);
-      pendingTimeouts.push(setTimeout(function() { element.fadeOut(100); }, 2000));
-    }
-
     // Attach a popup to a marker when clicked
     self.attachMessage = function(marker, theMessage) {
     	var message = theMessage;
@@ -143,7 +161,7 @@ var routeFinder = function() {
     };
 
     return {initialize: initialize};
-})(jQuery);
+};
 
 
 
