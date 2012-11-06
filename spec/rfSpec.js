@@ -36,6 +36,16 @@ describe("The map module", function() {
   	});
   });
 
+  it("should set search radius to at least 500m", function() {
+  	var map = routeFinder().init(options);
+  	// under threshold
+  	map.setSearchRadius(15, 1);
+  	expect(map.searchRadius).toEqual(500);
+  	// over threshold
+  	map.setSearchRadius(15, 20000);
+  	expect(map.searchRadius).toEqual(1333);
+  });
+
   xit("should find the right corners", function() {
   	expect(false).toBe(true);
   });
