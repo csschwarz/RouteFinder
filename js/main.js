@@ -10,7 +10,7 @@ var mapOptions = {
 function loadScript() {
   var script = document.createElement("script");
   script.type = "text/javascript";
-  script.src = "http://maps.googleapis.com/maps/api/js?key=AIzaSyC6LAzdvnuFGZ3bIt6zTjGaHsGcA0_6JWM&sensor=false&callback=setup";
+  script.src = "http://maps.googleapis.com/maps/api/js?libraries=geometry,places&key=AIzaSyC6LAzdvnuFGZ3bIt6zTjGaHsGcA0_6JWM&sensor=false&callback=setup";
   document.body.appendChild(script);
 };
 
