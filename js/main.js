@@ -1,8 +1,6 @@
 var mapModule;
 var mapOptions = {
-  mapId : 'map_canvas',
-  origId : 'start',
-  destId : 'stop',
+  map : $('#map_canvas'),
   alertBoxId : 'searchAlert'
 };
 
@@ -23,9 +21,12 @@ function setup() {
 $(function() {
 	loadScript();
   $('#search').click(function() {
-    mapModule.calcRoute();
+    mapModule.calcRoute($('#start').val(), $('#stop').val(), $('#transitMode .btn-info').attr('id'), 'food');
   });
-  $('#transitMode').children().click(function(event) {
-    mapModule.setTransitModeButtons($('#transitMode'), $(this).attr('id'));
+  var transitMode = $('#transitMode');
+  transitMode.children().click(function() {
+    transitMode.children().removeClass('btn-info');
+    $(this).addClass('btn-info');
+    mapModule.calcRoute($('#start').val(), $('#stop').val(), $(this).attr('id'), 'food');
   })
 });

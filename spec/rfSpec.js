@@ -1,12 +1,6 @@
 describe("The map module", function() {
 	
 	var map;
-	var options = {
-		mapId : 'map_canvas',
-		origId : 'start',
-		destId : 'stop',
-		alertBoxId : 'searchAlert'
-	};
 	var nwPath = [ // 3055 n sheffield to jefferson park (truncated)
 		new google.maps.LatLng(41.93808000000001, -87.65406),
 		new google.maps.LatLng(41.938030000000005, -87.65769),
@@ -97,6 +91,10 @@ describe("The map module", function() {
 			<div id="map_canvas"></div>\
 			<div id="searchAlert"></div>\
 			</div>');
+		var options = {
+			map : $('#map_canvas'),
+			alertBoxId : 'searchAlert'
+		};
 		map = routeFinder().init(options);
 	});
 
@@ -110,7 +108,7 @@ describe("The map module", function() {
   });
 
   it("should be able to get directions", function() {
-  	map.getDirections("3055 n sheffield chicago", "belmont harbor chicago");
+  	map.calcRoute("3055 n sheffield chicago", "belmont harbor chicago", "WALKING");
   	waitsFor(function() {
   		return map.directions.length > 0;
   	}, "directions.", 1000);
@@ -144,12 +142,15 @@ describe("The map module", function() {
   	expect(points).toEqual([0, 1, 3, 7, 11, 13, 17, 28, 31, 42, 48, 56, 61, 65]);
   });
 
-  xit("should search google places", function() {
-  	expect(false).toBe(true);
-  });
-
-  xit("should narrow search results", function() {
-  	expect(false).toBe(true);
+  it("should search google places", function() {
+  	map.totalSearchPoints = 14;
+  	map.searchPlaces('food', sePath, [0, 1, 3, 7, 11, 13, 17, 28, 31, 42, 48, 56, 61, 65]);
+  	waitsFor(function() {
+  		return map.searchResults.length > 0;
+  	}, "places results.", 1000);
+  	waitsFor(function() {
+  		return map.totalSearchPoints == 0;
+  	}, "all places results.", 5000);
   });
 
   xit("should work end-to-end", function() {

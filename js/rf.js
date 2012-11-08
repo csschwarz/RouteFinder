@@ -1,7 +1,6 @@
 /**
  * TODO
- * 1) Remove jQuery dependency (all page interaction should be outside this module)
- * 2) Fix fillGaps to deal with condition where no points left between search points
+ * 1) Fix fillGaps to deal with condition where no points left between search points
  *    that are too far apart
  */
 
@@ -20,44 +19,40 @@ var routeFinder = function() {
       zoom : 15,
       mapTypeId : google.maps.MapTypeId.HYBRID
     };
-    // maybe try $.extend({OPTIONS : HERE}, options); and set some defaults
-    // instead of self.whatever = whatever_else;
-    self.orig = $('#'+options['origId']);
-    self.dest = $('#'+options['destId']);
     self.alertBox = $('#'+options['alertBoxId']);
-    self.map = new google.maps.Map($('#'+options['mapId'])[0], mapOptions);
+    self.map = new google.maps.Map(options['map'][0], mapOptions);
     self.directionsService = new google.maps.DirectionsService();
+    self.placesService = new google.maps.places.PlacesService(self.map);
     self.transitLayer = new google.maps.TransitLayer();
     self.directionsDisplay = new google.maps.DirectionsRenderer();
     self.directions = [];
+    self.searchResults = [];
     self.searchRadius = 450;
     self.numSearches = 20;
-    self.transitMode = google.maps.TravelMode.WALKING
+    self.tolerance = 0.005;
     self.directionsDisplay.setMap(self.map);
     self.transitLayer.setMap(self.map);
     return self;
   }
 
-  self.calcRoute = function() {
-    self.getDirections(self.orig.val(), self.dest.val());
-  }
-
-  self.getDirections = function(start, stop) {
+  self.calcRoute = function(start, stop, travelMode, searchTerm) {
     if(start && stop) {
       self.directionsService.route({
         origin : start,
         destination : stop,
-        travelMode : self.transitMode
+        travelMode : travelMode
       }, function(result, status) {
         if(status == google.maps.DirectionsStatus.OK) {
           var distance = result['routes'][0]['legs'][0]['distance']['value'];
           self.setSearchRadius(self.numSearches, distance);
-          if(self.searchRadius > 50000) {
+          if(self.searchRadius > 50000) { // max allowed google places search radius
             showAlert(self.alertBox, "<strong>Sorry!</strong> Your route is too long.", "alert-error");
           } else {
             self.directionsDisplay.setDirections(result);
             self.directions = result['routes'][0]['overview_path'];
             self.showDirectionsMarkers(); // debug only
+            var searchPoints = self.determineSearchPoints(self.directions);
+            self.searchPlaces(searchTerm, self.directions, searchPoints);
           }
         } else {
           showAlert(self.alertBox, "<strong>Sorry!</strong> I can't find a route.", "alert-error");
@@ -68,7 +63,6 @@ var routeFinder = function() {
 
   self.findCorners = function(path) {
     var curHeading = google.maps.geometry.spherical.computeHeading(path[0], path[1]);
-    console.log('***FINDING CORNERS***');
     console.log('Initial heading (0->1): '+curHeading);
     var corners = [];
     for(i=1; i<path.length-1; i++) {
@@ -81,32 +75,36 @@ var routeFinder = function() {
         console.log('Corner found at '+i);
       }
     }
-    console.log('***CORNERS FOUND***');
     return corners;
   }
 
   self.determineSearchPoints = function(path) {
     console.log('***DETERMINING SEARCH POINTS***');
-    console.log(self.searchRadius);
+    console.log('search radius: '+self.searchRadius);
     var minDist = self.searchRadius / 1.25;
     var maxDist = (self.searchRadius * 2) - 0.1 * self.searchRadius;
     console.log('(min, max): ('+minDist+', '+maxDist+')');
+
+    console.log('***FINDING CORNERS***');
     var corners = self.findCorners(path);
+    console.log('...done.');
+
     var result = [];
     result.push(0);
     
-    console.log('Adding corners...');
+    console.log('***ADDING CORNERS***');
     result = addCorners(path, result, corners, minDist);
     console.log('...done.');
 
     result.push(path.length-1); // Need an endpoint, else we might miss the end of the route
 
-    console.log('Filling in gaps...');
+    console.log('***FILLING IN GAPS***');
     result = fillGaps(path, result, maxDist);
     console.log('...done.');
 
     console.log('***SEARCH POINTS DETERMINED***');
     console.log(result.toString());
+    self.totalSearchPoints = result.length;
     return result;
   }
 
@@ -153,11 +151,94 @@ var routeFinder = function() {
     return searchPoints;
   }
 
+  // THIS IS AWFUL FIX IT TIMEOUTS SUCK USE THE ACTUAL JSON PLACES API INSTEAD!!!
+  self.searchPlaces = function(searchTerm, path, searchPoints) {
+    searchPoints = searchPoints.reverse(); // makes resulting list (a little) better
+    self.searchesComplete = 0;
+    for(var i=0; i<5 && searchPoints.length; i++) {
+      var request = {
+        location : path[searchPoints.pop()],
+        radius : self.searchRadius,
+        keyword : searchTerm
+      };
+      self.placesService.nearbySearch(request, handlePlacesResults);
+    }
+    self.tempSearchInfo = [searchTerm, path, searchPoints];
+  }
+
+  // SAME AS SELF.SEARCHPLACES!!!
+  function handlePlacesResults(results, status) {
+    self.searchesComplete++;
+    self.totalSearchPoints--;
+    if(status == google.maps.places.PlacesServiceStatus.OK) {
+      self.searchResults = addUniquePlaces(results);
+      console.log(self.searchResults.length);
+    } else {
+      console.log("Places search failed! Status: "+status.toString());
+      throw "Place search failed!";
+    }
+    if(self.searchesComplete == 5) {
+      console.log("Waiting 1s...");
+      setTimeout(function() { 
+        self.searchPlaces(self.tempSearchInfo[0], self.tempSearchInfo[1], self.tempSearchInfo[2].reverse()); 
+      }, 1000);
+      self.searchesComplete = 0;
+    }
+    if(!self.totalSearchPoints) {
+      console.log('All places found.');
+      narrowResults(self.tempSearchInfo[1], self.tolerance);
+      renderPlacesMarkers();
+    }
+  }
+
+  function addUniquePlaces(results) {
+    var set = {};
+    for(var i=0; i<self.searchResults.length; i++) {
+      set[self.searchResults[i]['name']] = self.searchResults[i];
+    }
+    for(var i=0; i<results.length; i++) {
+      set[results[i]['name']] = results[i];
+    }
+    var places = [];
+    for(var place in set) {
+      places.push(set[place]);
+    }
+    return places;
+  }
+
+  function narrowResults(path, tolerance) {
+    places = [];
+    for(var i=0; i<self.searchResults.length; i++) {
+      var location = self.searchResults[i].geometry.location;
+      var pathPolyLine = new google.maps.Polyline();
+      pathPolyLine.setPath(path);
+      var isNearPath = google.maps.geometry.poly.isLocationOnEdge(location, pathPolyLine, tolerance);
+      if(isNearPath) {
+        places.push(self.searchResults[i]);
+      }
+    }
+    console.log(places.length+' of '+self.searchResults.length+' places are near route.');
+    self.chosenLocations = places;
+  }
+
   // Determine size of search circles
   self.setSearchRadius = function(numSearches, distance) {
     console.log("ROUTE DISTANCE: "+distance);
     var newRadius = Math.floor(distance/numSearches);
     self.searchRadius = Math.max(newRadius, 450); // 450 seems the best minimum
+  }
+
+  self.placesMarkers = [];
+  function renderPlacesMarkers() {
+    for(var i=0; i<self.placesMarkers.length; i++) { self.placesMarkers[i].setMap(null); }
+    self.placesMarkers = [];
+    for(var i=0; i<self.chosenLocations.length; i++) {
+      self.placesMarkers.push(new google.maps.Marker({
+        position: self.chosenLocations[i].geometry.location,
+        map: self.map,
+        title: self.searchResults[i].name
+      }));
+    }
   }
 
 // DEBUG METHODS
@@ -172,7 +253,8 @@ var routeFinder = function() {
       self.markers.push(new google.maps.Marker({
         position: self.directions[i],
         map: self.map,
-        title: ''+i
+        title: ''+i,
+        visible: false
       }));
       self.attachMessage(self.markers[i], '#'+i);
     }
@@ -201,18 +283,9 @@ var routeFinder = function() {
       infowindow.open(self.map, marker);
     });
   };
-// --END DEBUG METHODS
+//
 
 // THESE NEED TO BE REFACTORED OUT OF THE MODULE
-
-  // Transit option button handler
-  // Recalculates route (for convenience)
-  self.setTransitModeButtons = function(btnContainer, btnId) {
-    self.transitMode = google.maps.TravelMode[btnId];
-    btnContainer.children().removeClass('btn-info');
-    btnContainer.children('#'+btnId).addClass('btn-info');
-    self.calcRoute();
-  }
 
   // Helper function to show alerts briefly
   var pendingTimeouts = [];
